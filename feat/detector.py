@@ -914,6 +914,7 @@ class Detector(object):
         detect_aus=True,
         detect_emotions=True,
         detect_identities=True,
+        compute_identities=True,
         **kwargs,
     ):
         """Detects FEX from a video file.
@@ -932,7 +933,8 @@ class Detector(object):
                                 confidence of the face detector; Default >= 0.5
             face_identity_threshold (float): value between 0-1 to determine similarity of person using face identity embeddings; Default >= 0.8
             memory_storage (bool): If ``True``, the video will be stored in memory. For large videos, this is significantly faster but can take a lot of memory
-            detect_poses/aus/emotions/identities: If any are ``False``, that feature will not be detected, saving time and shortening the FEX
+            detect_poses/aus/emotions/identities (bool): If any are ``False``, that feature will not be detected, saving time and shortening the FEX
+            compute_identities (bool): If ``True``, identities like "person_0", "person_1", etc will be calculated (this can take a lot of memory)
             
         Returns:
             Fex: Prediction results dataframe
@@ -1008,7 +1010,7 @@ class Detector(object):
         batch_output["approx_time"] = [
             dataset.calc_approx_frame_time(x) for x in batch_output["frame"].to_numpy()
         ]
-        if detect_identities:
+        if detect_identities and compute_identities:
             batch_output.compute_identities(threshold=face_identity_threshold, inplace=True)
 
         return batch_output.set_index("frame", drop=False)
