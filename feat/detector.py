@@ -900,6 +900,7 @@ class Detector(object):
         pin_memory=False,
         face_detection_threshold=0.5,
         face_identity_threshold=0.8,
+        memory_storage=False,
         **kwargs,
     ):
         """Detects FEX from a video file.
@@ -917,6 +918,7 @@ class Detector(object):
             face_detection_threshold (float): value between 0-1 to report a detection based on the
                                 confidence of the face detector; Default >= 0.5
             face_identity_threshold (float): value between 0-1 to determine similarity of person using face identity embeddings; Default >= 0.8
+            memory_storage (bool): If ``True``, the video will be stored in memory. For large videos, this is significantly faster but can take a lot of memory
 
         Returns:
             Fex: Prediction results dataframe
@@ -931,7 +933,7 @@ class Detector(object):
         identity_model_kwargs = kwargs.pop("identity_model_kwargs", dict())
 
         dataset = VideoDataset(
-            video_path, skip_frames=skip_frames, output_size=output_size
+            video_path, skip_frames=skip_frames, output_size=output_size, memory_storage=memory_storage
         )
 
         data_loader = DataLoader(

@@ -7,6 +7,7 @@ import warnings
 # Suppress nilearn warnings that come from importing nltools
 warnings.filterwarnings("ignore", category=FutureWarning, module="nilearn")
 import os
+import sys
 from typing import Iterable
 from copy import deepcopy
 import numpy as np
@@ -2210,53 +2211,106 @@ class VideoDataset(Dataset):
         Dataset: dataset of [batch, channels, height, width] that can be passed to DataLoader
     """
 
-    def __init__(self, video_file, skip_frames=None, output_size=None):
+    def __init__(self, video_file, skip_frames=None, output_size=None, memory_storage=False):
+        if memory_storage:
+            # Ignore UserWarning: The pts_unit 'pts' gives wrong results. Please use
+            # pts_unit 'sec'. See why it's ok in this issue:
+            # https://github.com/pytorch/vision/issues/1931
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                # Video dimensions are: [time, height, width, channels]
+                print("▶ Reading video")
+                self.video, self.audio, self.info = read_video(video_file)
+                print("✓", sys.getsizeof(self.video.storage())/1048576, "MBs read")
+            # Swap them to match output of read_image: [time, channels, height, width]
+            # Otherwise detectors face on tensor dimension mismatch
+            self.video = swapaxes(swapaxes(self.video, 1, 3), -1, -2)
+
+        self.memory_storage = memory_storage
         self.file_name = video_file
         self.skip_frames = skip_frames
         self.output_size = output_size
         self.get_video_metadata(video_file)
-        # This is the list of frame ids used to slice the video not video_frames
-        self.video_frames = np.arange(
-            0, self.metadata["num_frames"], 1 if skip_frames is None else skip_frames
-        )
+
+        if memory_storage:
+            self.video_frames = np.arange(
+                0, self.video.shape[0], 1 if skip_frames is None else skip_frames
+            )
+            self.video = self.video[self.video_frames, :, :]
+            print("ⓘ", sys.getsizeof(self.video.storage())/1048576, "MBs stored")
+        else:
+            # This is the list of frame ids used to slice the video not video_frames
+            self.video_frames = np.arange(
+                0, self.metadata["num_frames"], 1 if skip_frames is None else skip_frames
+            )
 
     def __len__(self):
-        # Number of frames respective skip_frames
-        return len(self.video_frames)
+        if self.memory_storage:
+            return self.video.shape[0]
+        else:
+            # Number of frames respective skip_frames
+            return len(self.video_frames)
 
     def __getitem__(self, idx):
-        # Get the frame data and frame number respective skip_frames
-        frame_data, frame_idx = self.load_frame(idx)
+        if self.memory_storage:
+            # Rescale if needed like in ImageDataset
+            if self.output_size is not None:
+                logging.info(
+                    f"VideoDataset: RESCALING WARNING: from {self.video[idx].shape} to output_size={self.output_size}"
+                )
+                transform = Compose(
+                    [Rescale(self.output_size, preserve_aspect_ratio=True, padding=False)]
+                )
+                transformed_img = transform(self.video[idx])
 
-        # Swap frame dims to match output of read_image: [time, channels, height, width]
-        # Otherwise detectors face on tensor dimension mismatch
-        frame_data = swapaxes(swapaxes(frame_data, 0, -1), 1, 2)
-
-        # Rescale if needed like in ImageDataset
-        if self.output_size is not None:
-            logging.info(
-                f"VideoDataset: RESCALING WARNING: from {self.metadata['shape']} to output_size={self.output_size}"
-            )
-            transform = Compose(
-                [Rescale(self.output_size, preserve_aspect_ratio=True, padding=False)]
-            )
-            transformed_frame_data = transform(frame_data)
-
-            return {
-                "Image": transformed_frame_data["Image"],
-                "Frame": frame_idx,
-                "FileName": self.file_name,
-                "Scale": transformed_frame_data["Scale"],
-                "Padding": transformed_frame_data["Padding"],
-            }
+                return {
+                    "Image": transformed_img["Image"],
+                    "Frame": self.video_frames[idx],
+                    "Scale": transformed_img["Scale"],
+                    "Padding": transformed_img["Padding"],
+                    "FileName": self.file_name
+                }
+            else:
+                return {
+                    "Image": self.video[idx],
+                    "Frame": self.video_frames[idx],
+                    "FileName": self.file_name,
+                    "Scale": 1.0,
+                    "Padding": {"Left": 0, "Top": 0, "Right": 0, "Bottom": 0},
+                }
         else:
-            return {
-                "Image": frame_data,
-                "Frame": frame_idx,
-                "FileName": self.file_name,
-                "Scale": 1.0,
-                "Padding": {"Left": 0, "Top": 0, "Right": 0, "Bottom": 0},
-            }
+            # Get the frame data and frame number respective skip_frames
+            frame_data, frame_idx = self.load_frame(idx)
+
+            # Swap frame dims to match output of read_image: [time, channels, height, width]
+            # Otherwise detectors face on tensor dimension mismatch
+            frame_data = swapaxes(swapaxes(frame_data, 0, -1), 1, 2)
+
+            # Rescale if needed like in ImageDataset
+            if self.output_size is not None:
+                logging.info(
+                    f"VideoDataset: RESCALING WARNING: from {self.metadata['shape']} to output_size={self.output_size}"
+                )
+                transform = Compose(
+                    [Rescale(self.output_size, preserve_aspect_ratio=True, padding=False)]
+                )
+                transformed_frame_data = transform(frame_data)
+
+                return {
+                    "Image": transformed_frame_data["Image"],
+                    "Frame": frame_idx,
+                    "FileName": self.file_name,
+                    "Scale": transformed_frame_data["Scale"],
+                    "Padding": transformed_frame_data["Padding"],
+                }
+            else:
+                return {
+                    "Image": frame_data,
+                    "Frame": frame_idx,
+                    "FileName": self.file_name,
+                    "Scale": 1.0,
+                    "Padding": {"Left": 0, "Top": 0, "Right": 0, "Bottom": 0},
+                }
 
     def get_video_metadata(self, video_file):
         container = av.open(video_file)
