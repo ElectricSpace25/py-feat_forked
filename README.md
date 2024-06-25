@@ -1,6 +1,6 @@
-Lazy fork of [py-feat](https://github.com/cosanlab/py-feat/tree/main) that adds a few features to video detection.
+Lazy fork of [py-feat](https://github.com/cosanlab/py-feat/tree/main) that adds a few features to video detection. The only files modified are `data.py` and `detector.py`.
 
-The following arguments are added to `detect_video()`:
+The following arguments are added to the `detect_video()` function:
 
 ## Store video in memory
 `memory_storage` (default = `False`)
