@@ -751,29 +751,38 @@ class Detector(object):
             **landmark_model_kwargs,
         )
 
-        poses_dict = self.detect_facepose(
-            batch_data["Image"], landmarks, **facepose_model_kwargs
-        )
+        poses = None
+        if facepose_model_kwargs is not None:
+            poses_dict = self.detect_facepose(
+                batch_data["Image"], landmarks, **facepose_model_kwargs
+            )
 
-        aus = self.detect_aus(batch_data["Image"], landmarks, **au_model_kwargs)
+        aus = None
+        if au_model_kwargs is not None:
+            aus = self.detect_aus(batch_data["Image"], landmarks, **au_model_kwargs)
 
-        emotions = self.detect_emotions(
-            batch_data["Image"], faces, landmarks, **emotion_model_kwargs
-        )
+        emotions = None
+        if emotion_model_kwargs is not None:
+            emotions = self.detect_emotions(
+                batch_data["Image"], faces, landmarks, **emotion_model_kwargs
+            )
 
-        identities = self.detect_identity(
-            batch_data["Image"],
-            faces,
-            **identity_model_kwargs,
-        )
+        identities = None
+        if identity_model_kwargs is not None:
+            identities = self.detect_identity(
+                batch_data["Image"],
+                faces,
+                **identity_model_kwargs,
+            )
 
         faces = _inverse_face_transform(faces, batch_data)
         landmarks = _inverse_landmark_transform(landmarks, batch_data)
 
-        # match faces to poses - sometimes face detector finds different faces than pose detector.
-        faces, poses = self._match_faces_to_poses(
-            faces, poses_dict["faces"], poses_dict["poses"]
-        )
+        if facepose_model_kwargs is not None:
+            # match faces to poses - sometimes face detector finds different faces than pose detector.
+            faces, poses = self._match_faces_to_poses(
+                faces, poses_dict["faces"], poses_dict["poses"]
+            )
 
         return faces, landmarks, poses, aus, emotions, identities
 
@@ -901,6 +910,10 @@ class Detector(object):
         face_detection_threshold=0.5,
         face_identity_threshold=0.8,
         memory_storage=False,
+        detect_poses=True,
+        detect_aus=True,
+        detect_emotions=True,
+        detect_identities=True,
         **kwargs,
     ):
         """Detects FEX from a video file.
@@ -927,10 +940,19 @@ class Detector(object):
         # Keyword arguments than can be passed to the underlying models
         face_model_kwargs = kwargs.pop("face_model_kwargs", dict())
         landmark_model_kwargs = kwargs.pop("landmark_model_kwargs", dict())
-        au_model_kwargs = kwargs.pop("au_model_kwargs", dict())
-        emotion_model_kwargs = kwargs.pop("emotion_model_kwargs", dict())
-        facepose_model_kwargs = kwargs.pop("facepose_model_kwargs", dict())
-        identity_model_kwargs = kwargs.pop("identity_model_kwargs", dict())
+        au_model_kwargs = None
+        emotion_model_kwargs = None
+        facepose_model_kwargs = None
+        identity_model_kwargs = None
+
+        if detect_aus:
+            au_model_kwargs = kwargs.pop("au_model_kwargs", dict())
+        if detect_emotions:
+            emotion_model_kwargs = kwargs.pop("emotion_model_kwargs", dict())
+        if detect_poses:
+            facepose_model_kwargs = kwargs.pop("facepose_model_kwargs", dict())
+        if detect_identities:
+            identity_model_kwargs = kwargs.pop("identity_model_kwargs", dict())
 
         dataset = VideoDataset(
             video_path, skip_frames=skip_frames, output_size=output_size, memory_storage=memory_storage
@@ -985,7 +1007,8 @@ class Detector(object):
         batch_output["approx_time"] = [
             dataset.calc_approx_frame_time(x) for x in batch_output["frame"].to_numpy()
         ]
-        batch_output.compute_identities(threshold=face_identity_threshold, inplace=True)
+        if detect_identities:
+            batch_output.compute_identities(threshold=face_identity_threshold, inplace=True)
 
         return batch_output.set_index("frame", drop=False)
 
@@ -1026,31 +1049,39 @@ class Detector(object):
                     columns=self.info["face_detection_columns"],
                     index=[i],
                 )
-                facepose_df = pd.DataFrame(
-                    {x: np.nan for x in self.info["facepose_model_columns"]},
-                    columns=self.info["facepose_model_columns"],
-                    index=[i],
-                )
+                facepose_df = None
+                if poses is not None:
+                    facepose_df = pd.DataFrame(
+                        {x: np.nan for x in self.info["facepose_model_columns"]},
+                        columns=self.info["facepose_model_columns"],
+                        index=[i],
+                    )
                 landmarks_df = pd.DataFrame(
                     {x: np.nan for x in self.info["face_landmark_columns"]},
                     columns=self.info["face_landmark_columns"],
                     index=[i],
                 )
-                aus_df = pd.DataFrame(
-                    {x: np.nan for x in self.info["au_presence_columns"]},
-                    columns=self.info["au_presence_columns"],
-                    index=[i],
-                )
-                emotions_df = pd.DataFrame(
-                    {x: np.nan for x in self.info["emotion_model_columns"]},
-                    columns=self.info["emotion_model_columns"],
-                    index=[i],
-                )
-                identity_df = pd.DataFrame(
-                    {x: np.nan for x in self.info["identity_model_columns"]},
-                    columns=self.info["identity_model_columns"],
-                    index=[i],
-                )
+                aus_df = None
+                if aus is not None:
+                    aus_df = pd.DataFrame(
+                        {x: np.nan for x in self.info["au_presence_columns"]},
+                        columns=self.info["au_presence_columns"],
+                        index=[i],
+                    )
+                emotions_df = None
+                if emotions is not None:
+                    emotions_df = pd.DataFrame(
+                        {x: np.nan for x in self.info["emotion_model_columns"]},
+                        columns=self.info["emotion_model_columns"],
+                        index=[i],
+                    )
+                identity_df = None
+                if identities is not None:
+                    identity_df = pd.DataFrame(
+                        {x: np.nan for x in self.info["identity_model_columns"]},
+                        columns=self.info["identity_model_columns"],
+                        index=[i],
+                    )
                 input_df = pd.DataFrame(file_names[i], columns=["input"], index=[i])
                 tmp_df = pd.concat(
                     [
@@ -1085,11 +1116,13 @@ class Detector(object):
                     index=[j],
                 )
 
-                facepose_df = pd.DataFrame(
-                    [poses[i][j]],
-                    columns=self.info["facepose_model_columns"],
-                    index=[j],
-                )
+                facepose_df = None
+                if poses is not None:
+                    facepose_df = pd.DataFrame(
+                        [poses[i][j]],
+                        columns=self.info["facepose_model_columns"],
+                        index=[j],
+                    )
 
                 landmarks_df = pd.DataFrame(
                     [landmarks[i][j].flatten(order="F")],
@@ -1097,25 +1130,31 @@ class Detector(object):
                     index=[j],
                 )
 
-                aus_df = pd.DataFrame(
-                    aus[i][j, :].reshape(1, len(self["au_presence_columns"])),
-                    columns=self.info["au_presence_columns"],
-                    index=[j],
-                )
+                aus_df = None
+                if aus is not None:
+                    aus_df = pd.DataFrame(
+                        aus[i][j, :].reshape(1, len(self["au_presence_columns"])),
+                        columns=self.info["au_presence_columns"],
+                        index=[j],
+                    )
 
-                emotions_df = pd.DataFrame(
-                    emotions[i][j, :].reshape(
-                        1, len(self.info["emotion_model_columns"])
-                    ),
-                    columns=self.info["emotion_model_columns"],
-                    index=[j],
-                )
+                emotions_df = None
+                if emotions is not None:
+                    emotions_df = pd.DataFrame(
+                        emotions[i][j, :].reshape(
+                            1, len(self.info["emotion_model_columns"])
+                        ),
+                        columns=self.info["emotion_model_columns"],
+                        index=[j],
+                    )
 
-                identity_df = pd.DataFrame(
-                    np.hstack([np.nan, identities[i][j]]).reshape(-1, 1).T,
-                    columns=self.info["identity_model_columns"],
-                    index=[j],
-                )
+                identity_df = None
+                if identities is not None:
+                    identity_df = pd.DataFrame(
+                        np.hstack([np.nan, identities[i][j]]).reshape(-1, 1).T,
+                        columns=self.info["identity_model_columns"],
+                        index=[j],
+                    )
 
                 input_df = pd.DataFrame(
                     file_names[i],
