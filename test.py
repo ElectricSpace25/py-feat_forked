@@ -9,7 +9,7 @@ skip_frames = 30
 batch_size = 1
 
 print("▶ Starting video detection")
-video_prediction = detector.detect_video(video_path, skip_frames=skip_frames, batch_size=batch_size)
+video_prediction = detector.detect_video(video_path, skip_frames=skip_frames, batch_size=batch_size, memory_storage=True)
 print("✓ Video detection complete")
 
 print("▶ Saving to CSV")
