@@ -932,7 +932,8 @@ class Detector(object):
                                 confidence of the face detector; Default >= 0.5
             face_identity_threshold (float): value between 0-1 to determine similarity of person using face identity embeddings; Default >= 0.8
             memory_storage (bool): If ``True``, the video will be stored in memory. For large videos, this is significantly faster but can take a lot of memory
-
+            detect_poses/aus/emotions/identities: If any are ``False``, that feature will not be detected, saving time and shortening the FEX
+            
         Returns:
             Fex: Prediction results dataframe
         """
